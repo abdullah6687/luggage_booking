@@ -20,6 +20,7 @@ add_action('admin_menu', 'luggage_storage_add_admin_menu');
 function luggage_storage_register_settings() {
     register_setting('luggage_storage_settings', 'per_day_charge');
     register_setting('luggage_storage_settings', 'insurance_per_bag');
+    register_setting('luggage_storage_settings', 'luggage_product_id');
 }
 add_action('admin_init', 'luggage_storage_register_settings');
 
@@ -35,6 +36,10 @@ function luggage_storage_settings_page() {
             ?>
             <table class="form-table">
                 <tr>
+                    <th scope="row">Luggage Product ID</th>
+                    <td><input type="number" name="luggage_product_id" value="<?php echo esc_attr(get_option('luggage_product_id', 0)); ?>" min="1"></td>
+                </tr>
+                <tr>
                     <th scope="row">Per Day Charge (£)</th>
                     <td><input type="number" name="per_day_charge" value="<?php echo esc_attr(get_option('per_day_charge', 10)); ?>" step="0.01"></td>
                 </tr>
@@ -49,9 +54,12 @@ function luggage_storage_settings_page() {
     <?php
 }
 
-// Add booking fields to product page
+// Add booking fields to a specific product page
 function luggage_storage_add_booking_fields() {
     if (!is_product()) return;
+    global $product;
+    $luggage_product_id = get_option('luggage_product_id', 0);
+    if ($product->get_id() != $luggage_product_id) return;
     ?>
     <div id="luggage-booking">
         <label>Start Date: <input type="date" id="start_date" required></label>
@@ -95,38 +103,3 @@ function luggage_storage_add_booking_fields() {
     <?php
 }
 add_action('woocommerce_before_add_to_cart_button', 'luggage_storage_add_booking_fields');
-
-// Process the booking at checkout
-function luggage_storage_process_checkout($cart_object) {
-    if (isset($_POST['luggage_booking'])) {
-        $bookingData = json_decode(stripslashes($_POST['luggage_booking']), true);
-        $cart_object->add_to_cart( get_the_ID(), 1, 0, [], [
-            'start_date' => $bookingData['startDate'],
-            'end_date' => $bookingData['endDate'],
-            'num_bags' => $bookingData['numBags'],
-            'total_cost' => $bookingData['totalCost']
-        ]);
-    }
-}
-add_action('woocommerce_before_calculate_totals', 'luggage_storage_process_checkout');
-
-// Customize the cart item name
-function luggage_storage_customize_cart_item_name($item_name, $cart_item, $cart_item_key) {
-    if (isset($cart_item['start_date'])) {
-        $item_name .= '<br>Start Date: ' . esc_html($cart_item['start_date']) .
-                      '<br>End Date: ' . esc_html($cart_item['end_date']) .
-                      '<br>Number of Bags: ' . esc_html($cart_item['num_bags']);
-    }
-    return $item_name;
-}
-add_filter('woocommerce_cart_item_name', 'luggage_storage_customize_cart_item_name', 10, 3);
-
-// Override cart total price
-function luggage_storage_override_cart_price($cart_object) {
-    foreach ($cart_object->cart_contents as $cart_item_key => $cart_item) {
-        if (isset($cart_item['total_cost'])) {
-            $cart_item['data']->set_price($cart_item['total_cost']);
-        }
-    }
-}
-add_action('woocommerce_cart_calculate_fees', 'luggage_storage_override_cart_price');

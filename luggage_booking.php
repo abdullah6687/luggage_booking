@@ -69,31 +69,28 @@ function luggage_storage_add_booking_fields() {
     </div>
     <script>
         document.getElementById('book_now').addEventListener('click', function() {
-            let startDate = new Date(document.getElementById('start_date').value);
-            let endDate = new Date(document.getElementById('end_date').value);
+            let startDate = document.getElementById('start_date').value;
+            let endDate = document.getElementById('end_date').value;
             let numBags = parseInt(document.getElementById('num_bags').value);
             let perDayCharge = <?php echo get_option('per_day_charge', 10); ?>;
             let insurancePerBag = <?php echo get_option('insurance_per_bag', 5); ?>;
 
-            if (isNaN(startDate) || isNaN(endDate) || numBags < 1) {
+            if (!startDate || !endDate || numBags < 1) {
                 alert('Please enter valid dates and number of bags.');
                 return;
             }
 
-            let days = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+            let days = Math.max(1, (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
             let totalCost = days * ((perDayCharge * numBags) + (insurancePerBag * numBags));
 
-            let form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '<?php echo esc_url(wc_get_checkout_url()); ?>';
-
-            let input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'luggage_booking';
-            input.value = JSON.stringify({ startDate, endDate, numBags, totalCost });
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
+            let url = new URL('<?php echo esc_url(wc_get_cart_url()); ?>');
+            url.searchParams.append('add-to-cart', '<?php echo get_option('luggage_product_id', 0); ?>');
+            url.searchParams.append('quantity', 1);
+            url.searchParams.append('start_date', startDate);
+            url.searchParams.append('end_date', endDate);
+            url.searchParams.append('num_bags', numBags);
+            url.searchParams.append('total_cost', totalCost);
+            window.location.href = url;
         });
     </script>
     <style>
@@ -103,3 +100,36 @@ function luggage_storage_add_booking_fields() {
     <?php
 }
 add_action('woocommerce_before_add_to_cart_button', 'luggage_storage_add_booking_fields');
+
+// Add custom data to cart item
+function luggage_storage_add_cart_item_data($cart_item_data, $product_id, $variation_id) {
+    if (isset($_GET['start_date'])) {
+        $cart_item_data['start_date'] = sanitize_text_field($_GET['start_date']);
+        $cart_item_data['end_date'] = sanitize_text_field($_GET['end_date']);
+        $cart_item_data['num_bags'] = intval($_GET['num_bags']);
+        $cart_item_data['total_cost'] = floatval($_GET['total_cost']);
+    }
+    return $cart_item_data;
+}
+add_filter('woocommerce_add_cart_item_data', 'luggage_storage_add_cart_item_data', 10, 3);
+
+// Display custom data in cart
+function luggage_storage_display_cart_item_data($item_data, $cart_item) {
+    if (isset($cart_item['start_date'])) {
+        $item_data[] = ['name' => 'Start Date', 'value' => $cart_item['start_date']];
+        $item_data[] = ['name' => 'End Date', 'value' => $cart_item['end_date']];
+        $item_data[] = ['name' => 'Number of Bags', 'value' => $cart_item['num_bags']];
+    }
+    return $item_data;
+}
+add_filter('woocommerce_get_item_data', 'luggage_storage_display_cart_item_data', 10, 2);
+
+// Adjust cart item price
+function luggage_storage_calculate_price($cart_object) {
+    foreach ($cart_object->get_cart() as $cart_item) {
+        if (isset($cart_item['total_cost'])) {
+            $cart_item['data']->set_price($cart_item['total_cost']);
+        }
+    }
+}
+add_action('woocommerce_before_calculate_totals', 'luggage_storage_calculate_price');
